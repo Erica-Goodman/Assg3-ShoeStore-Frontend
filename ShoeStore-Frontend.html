@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Shoes Store — Products & Cart</title>
+  <style>
+    :root{--accent:#0ea5a4;--muted:#6b7280;font-family:Inter,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    body{margin:0;font-family:var(--font,Inter,system-ui);background:#f8fafc;color:#0f172a}
+    header{background:white;box-shadow:0 1px 3px rgba(2,6,23,0.06);padding:12px 20px;display:flex;align-items:center;justify-content:space-between}
+    .brand{font-weight:700;display:flex;gap:10px;align-items:center}
+    .container{max-width:1100px;margin:20px auto;padding:0 16px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}
+    .card{background:white;border-radius:8px;padding:12px;box-shadow:0 1px 2px rgba(2,6,23,0.06);display:flex;flex-direction:column}
+    .card img{height:140px;object-fit:cover;border-radius:6px}
+    .card h3{margin:10px 0 6px;font-size:16px}
+    .card p{margin:0 0 8px;color:var(--muted);font-size:14px}
+    .meta{display:flex;justify-content:space-between;align-items:center;margin-top:auto}
+    .btn{background:var(--accent);color:white;border:none;padding:8px 10px;border-radius:6px;cursor:pointer}
+    .btn.secondary{background:transparent;border:1px solid #e6e9ee;color:var(--muted)}
+    .top-actions{display:flex;gap:8px;align-items:center}
+    .cart-btn{position:relative;background:transparent;border:1px solid transparent;padding:6px 10px;border-radius:8px;cursor:pointer}
+    .cart-count{position:absolute;right:-6px;top:-6px;background:#ef4444;color:white;width:20px;height:20px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:12px}
+    .hidden{display:none}
+    main{padding-bottom:60px}
+    .cart-list{display:grid;gap:12px}
+    .cart-row{display:flex;gap:12px;align-items:center;background:white;padding:10px;border-radius:8px}
+    .cart-row img{width:80px;height:80px;object-fit:cover;border-radius:6px}
+    .cart-info{flex:1}
+    .total-bar{position:sticky;top:12px;background:white;padding:12px;border-radius:8px;box-shadow:0 1px 2px rgba(2,6,23,0.04);display:flex;justify-content:space-between;align-items:center}
+    footer{padding:20px;text-align:center;color:var(--muted);font-size:14px}
+    @media(max-width:600px){.card img{height:120px}}
+    .loader{display:inline-block;width:18px;height:18px;border:2px solid #e5e7eb;border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .error{color:#b91c1c}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <svg width="28"height="28"viewBox="0 0 24 24"fill="none"xmlns="http://www.w3.org/2000/svg"><path d="M3 12h18"stroke="#0f172a"stroke-width="1.5"stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div>Shoes Store</div>
+    </div>
+    <div class="top-actions">
+      <div id="base-url-display" style="font-size:13px;color:var(--muted);margin-right:12px">API: <span id="api-base">/api</span></div>
+      <button id="btn-products" class="cart-btn">Products</button>
+      <button id="btn-cart" class="cart-btn" aria-label="Open cart">Cart <span id="cart-count" class="cart-count hidden">0</span></button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Products view -->
+    <section id="products-view">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h2>Products</h2>
+        <div id="products-status"></div>
+      </div>
+      <div id="products-grid" class="grid"></div>
+      <div id="products-empty" class="hidden">No products found.</div>
+    </section>
+
+    <!-- Cart view -->
+    <section id="cart-view" class="hidden">
+      <div class="total-bar">
+        <div><strong>Cart</strong></div>
+        <div>
+          Total: <span id="cart-total">$0.00</span>
+          <button id="btn-empty" class="btn secondary" style="margin-left:12px">Empty Cart</button>
+        </div>
+      </div>
+
+      <div style="height:12px"></div>
+      <div id="cart-list" class="cart-list"></div>
+      <div id="cart-empty" class="hidden">Cart is empty.</div>
+    </section>
+
+    <div id="global-error" class="error hidden"></div>
+  </main>
+
+  <footer>
+    Demo frontend — adjust `BASE_URL` at top of script to match your backend.
+  </footer>
+
+  <script>
+    // CONFIG
+    // Change BASE_URL to your deployed Render.com backend base URL (example: https://myapp.onrender.com)
+    const BASE_URL = "https://shoestore-xwcw.onrender.com/";
+    // NOTE: For local testing with Spring Boot running on localhost:8080 use: const BASE_URL = 'http://localhost:8080';
+
+    // Endpoints
+    const API = {
+      PRODUCTS: () => `${BASE_URL}/products`,
+      PRODUCT: (id) => `${BASE_URL}/products/${id}`,
+      CART: () => `${BASE_URL}/cart`,
+      EMPTY_CART: () => `${BASE_URL}/emptycart`,
+      DELETE_CART_ITEM: (id) => `${BASE_URL}/cart/${id}`
+    };
+
+    // DOM
+    const productsGrid = document.getElementById('products-grid');
+    const productsStatus = document.getElementById('products-status');
+    const productsEmpty = document.getElementById('products-empty');
+    const cartCountEl = document.getElementById('cart-count');
+    const btnCart = document.getElementById('btn-cart');
+    const btnProducts = document.getElementById('btn-products');
+    const productsView = document.getElementById('products-view');
+    const cartView = document.getElementById('cart-view');
+    const cartList = document.getElementById('cart-list');
+    const cartTotal = document.getElementById('cart-total');
+    const cartEmpty = document.getElementById('cart-empty');
+    const btnEmpty = document.getElementById('btn-empty');
+    const apiBaseDisplay = document.getElementById('api-base');
+    const globalError = document.getElementById('global-error');
+
+    apiBaseDisplay.textContent = BASE_URL || '(relative)';
+
+    // Basic helpers
+    function money(n){return '$' + Number(n||0).toFixed(2)}
+    function showError(msg){globalError.textContent = msg;globalError.classList.remove('hidden')}
+    function clearError(){globalError.classList.add('hidden');globalError.textContent=''}
+
+    // Try fetching with timeout
+    async function fetchWithTimeout(url, opts={}, ms=8000){
+      const controller = new AbortController();
+      const id = setTimeout(()=>controller.abort(), ms);
+      try{
+        const res = await fetch(url, {...opts, signal: controller.signal});
+        clearTimeout(id);
+        return res;
+      }catch(e){clearTimeout(id);throw e}
+    }
+
+    // PRODUCTS
+    async function loadProducts(){
+      productsGrid.innerHTML='';
+      productsStatus.innerHTML = '<span class="loader" title="loading"></span>';
+      productsEmpty.classList.add('hidden');
+      try{
+        const res = await fetchWithTimeout(API.PRODUCTS());
+        if(!res.ok) throw new Error('Failed to load products: ' + res.status);
+        const data = await res.json();
+        productsStatus.innerHTML = '';
+        if(!Array.isArray(data) || data.length===0){ productsEmpty.classList.remove('hidden'); return }
+        for(const p of data) productsGrid.appendChild(productCard(p));
+      }catch(err){
+        productsStatus.innerHTML = '';
+        productsEmpty.classList.remove('hidden');
+        showError('Unable to fetch products. Backend may be offline.');
+        console.error(err);
+      }
+    }
+
+    function productCard(p){
+      const el = document.createElement('div'); el.className='card';
+      const img = document.createElement('img'); img.src = p.image || 'https://via.placeholder.com/300x180?text=No+Image'; img.alt = p.name || '';
+      const h = document.createElement('h3'); h.textContent = p.name || 'Unnamed';
+      const desc = document.createElement('p'); desc.textContent = p.description || '';
+      const sku = document.createElement('div'); sku.textContent = 'SKU: ' + (p.sku || '-'); sku.style.fontSize='13px'; sku.style.color='var(--muted)';
+      const meta = document.createElement('div'); meta.className='meta';
+      const price = document.createElement('div'); price.textContent = money(p.price);
+      const add = document.createElement('button'); add.className='btn'; add.textContent = 'Add to cart';
+      add.onclick = ()=> addToCartLocalFallback(p.id, p);
+      meta.appendChild(price); meta.appendChild(add);
+      el.appendChild(img); el.appendChild(h); el.appendChild(desc); el.appendChild(sku); el.appendChild(meta);
+      return el;
+    }
+
+    // CART
+    // Strategy: try to call backend POST /cart (assumed) to add item, otherwise fallback to localStorage.
+    // Backend endpoints given in spec do not include POST /cart, so fallback ensures the UI still works.
+
+    function getLocalCart(){
+      try{return JSON.parse(localStorage.getItem('client-cart')||'[]')||[]}catch(e){return[]}
+    }
+    function saveLocalCart(cart){localStorage.setItem('client-cart', JSON.stringify(cart))}
+
+    async function addToCartLocalFallback(productId, product){
+      clearError();
+      // Attempt backend POST /cart with body {productId: <id>} (best-effort)
+      try{
+        const res = await fetchWithTimeout(API.CART(), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({productId})},5000);
+        if(res.ok){ await refreshCart(); return }
+      }catch(e){ /* ignore and fallback */ }
+      // fallback: store simple entries locally with unique client id
+      const cart = getLocalCart();
+      cart.push({id: 'local-' + Date.now() + '-' + Math.floor(Math.random()*9999), productId, product});
+      saveLocalCart(cart);
+      updateCartBadge(cart.length);
+    }
+
+    async function refreshCart(){
+      clearError();
+      // try backend GET /cart
+      try{
+        const res = await fetchWithTimeout(API.CART());
+        if(!res.ok) throw new Error('no remote cart');
+        const data = await res.json();
+        // assume backend returns array of items with {id, shoes:[{id,name,price,image,...}]} or flat product
+        renderCartFromRemote(data);
+        return;
+      }catch(e){
+        // fallback to local
+        const local = getLocalCart();
+        renderCartFromLocal(local);
+      }
+    }
+
+    function renderCartFromLocal(items){
+      cartList.innerHTML = '';
+      if(!items || items.length===0){ cartEmpty.classList.remove('hidden'); cartTotal.textContent = money(0); updateCartBadge(0); return }
+      cartEmpty.classList.add('hidden');
+      let total = 0;
+      for(const it of items){
+        const p = it.product || it.productId ? (it.product || {id:it.productId,name:'Product '+it.productId,price:0,image:''}) : null;
+        const row = createCartRow(it.id, p);
+        cartList.appendChild(row);
+        total += (p && p.price) ? p.price : 0;
+      }
+      cartTotal.textContent = money(total);
+      updateCartBadge(items.length);
+    }
+
+    function renderCartFromRemote(items){
+      // adjust depending on backend shape. We'll try common shapes.
+      cartList.innerHTML='';
+      if(!items || items.length===0){ cartEmpty.classList.remove('hidden'); cartTotal.textContent = money(0); updateCartBadge(0); return }
+      cartEmpty.classList.add('hidden');
+      let total=0;
+      for(const it of items){
+        // if backend returns {id, shoes:[{...}]}, flatten
+        if(it.shoes && Array.isArray(it.shoes)){
+          for(const p of it.shoes){
+            cartList.appendChild(createCartRow(it.id + '-' + p.id, p));
+            total += p.price || 0;
+          }
+          continue;
+        }
+        // if backend returns items with product inside
+        const product = it.product || it;
+        cartList.appendChild(createCartRow(it.id || product.id, product));
+        total += product.price || 0;
+      }
+      cartTotal.textContent = money(total);
+      updateCartBadge(cartList.children.length);
+    }
+
+    function createCartRow(itemId, product){
+      const row = document.createElement('div'); row.className='cart-row';
+      const img = document.createElement('img'); img.src = (product && product.image) || 'https://via.placeholder.com/140x100?text=No+Image';
+      const info = document.createElement('div'); info.className='cart-info';
+      const name = document.createElement('div'); name.textContent = product?.name || 'Unknown'; name.style.fontWeight='600';
+      const sku = document.createElement('div'); sku.textContent = 'SKU: ' + (product?.sku || '-'); sku.style.color='var(--muted)'; sku.style.fontSize='13px';
+      const price = document.createElement('div'); price.textContent = money(product?.price || 0);
+      info.appendChild(name); info.appendChild(sku); info.appendChild(price);
+      const remove = document.createElement('button'); remove.className='btn secondary'; remove.textContent='Remove';
+      remove.onclick = ()=> removeCartItem(itemId);
+      row.appendChild(img); row.appendChild(info); row.appendChild(remove);
+      return row;
+    }
+
+    async function removeCartItem(itemId){
+      clearError();
+      // try backend delete
+      try{
+        const res = await fetchWithTimeout(API.DELETE_CART_ITEM(encodeURIComponent(itemId)), {method:'DELETE'},5000);
+        if(res.ok){ await refreshCart(); return }
+      }catch(e){ /* ignore */ }
+      // fallback local
+      const cart = getLocalCart();
+      const filtered = cart.filter(c=>String(c.id)!==String(itemId));
+      saveLocalCart(filtered);
+      renderCartFromLocal(filtered);
+    }
+
+    async function emptyCart(){
+      clearError();
+      try{
+        const res = await fetchWithTimeout(API.EMPTY_CART(), {method:'DELETE'},5000);
+        if(res.ok){ await refreshCart(); return }
+      }catch(e){ /* ignore */ }
+      saveLocalCart([]);
+      renderCartFromLocal([]);
+    }
+
+    function updateCartBadge(n){
+      if(n>0){ cartCountEl.classList.remove('hidden'); cartCountEl.textContent = n } else { cartCountEl.classList.add('hidden'); }
+    }
+
+    // UI switching
+    btnCart.addEventListener('click', ()=>{ productsView.classList.add('hidden'); cartView.classList.remove('hidden'); refreshCart(); });
+    btnProducts.addEventListener('click', ()=>{ cartView.classList.add('hidden'); productsView.classList.remove('hidden'); loadProducts(); });
+    btnEmpty.addEventListener('click', ()=>{ if(confirm('Empty cart?')) emptyCart(); });
+
+    // initial load
+    (function init(){
+      loadProducts();
+      // initialise badge from local fallback until remote is available
+      const local = getLocalCart(); updateCartBadge(local.length);
+    })();
+
+    // expose for debugging
+    window.__SHOES_APP__ = {loadProducts, refreshCart, addToCartLocalFallback, API};
+  </script>
+</body>
+</html>
